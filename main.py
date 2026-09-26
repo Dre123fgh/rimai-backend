@@ -12,6 +12,8 @@ import io
 import os
 import random
 import logging
+import tensorflow as tf
+import numpy as np
 
 from fastapi import FastAPI, File, UploadFile, Header, HTTPException
 from pydantic import BaseModel
@@ -30,12 +32,16 @@ CONFIDENCE_THRESHOLD = float(os.environ.get("RIMAI_CONFIDENCE_THRESHOLD", "0.6")
 
 # Placeholder class list — replace with the AI Lead's exact class list on hand-off.
 CLASS_NAMES = [
-    "tomato_healthy",
-    "tomato_early_blight",
-    "tomato_late_blight",
-    "tomato_leaf_mold",
-    "tomato_septoria_leaf_spot",
-    "tomato_bacterial_spot",
+    "Tomato___Bacterial_spot",
+    "Tomato___Early_blight",
+    "Tomato___Late_blight",
+    "Tomato___Leaf_Mold",
+    "Tomato___Septoria_leaf_spot",
+    "Tomato___Spider_mites Two-spotted_spider_mite",
+    "Tomato___Target_Spot",
+    "Tomato___Tomato_Yellow_Leaf_Curl_Virus",
+    "Tomato___Tomato_mosaic_virus",
+    "Tomato___healthy",
 ]
 
 MODEL = None  # populated by load_model() once a real checkpoint exists
@@ -55,33 +61,27 @@ class PredictionResponse(BaseModel):
 # Model loading / inference
 # ---------------------------------------------------------------------------
 def load_model():
-    """
-    Day 5: load the real checkpoint here, e.g.
-
-        import torch
-        model = torch.load("checkpoint.pth", map_location="cpu")
-        model.eval()
-        return model
-
-    Until the checkpoint arrives, this stays a no-op.
-    """
     global MODEL
     if MODEL is None:
-        logger.info("No real checkpoint loaded yet — running in dummy mode.")
+        # Rebuild the model architecture from config.json, then load the trained weights
+        with open("tomato_model/config.json", "r") as f:
+            config = f.read()
+        MODEL = tf.keras.models.model_from_json(config)
+        MODEL.load_weights("tomato_model/model.weights.h5")
+        logger.info("Real Keras model loaded successfully.")
     return MODEL
 
-
 def run_inference(image: Image.Image):
-    """
-    Day 5: replace this body with real preprocessing + model forward pass,
-    returning (class_name, confidence_float). The dummy version below just
-    fakes a plausible result so the rest of the pipeline (n8n, WhatsApp
-    replies, low-confidence path) can be built and tested right now.
-    """
-    if MODEL is None:
-        predicted_class = random.choice(CLASS_NAMES)
-        confidence = round(random.uniform(0.4, 0.98), 2)
-        return predicted_class, confidence
+    img_resized = image.resize((224, 224))  # adapte si metadata.json indique une autre taille
+    img_array = np.array(img_resized) / 255.0
+    img_array = np.expand_dims(img_array, axis=0)
+
+    predictions = MODEL.predict(img_array)
+    predicted_index = np.argmax(predictions[0])
+    confidence = float(predictions[0][predicted_index])
+    predicted_class = CLASS_NAMES[predicted_index]
+
+    return predicted_class, confidence
 
     # Real inference path once MODEL is loaded (Day 5+):
     # tensor = preprocess(image)
